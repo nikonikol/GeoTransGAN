@@ -315,11 +315,12 @@ class Generator(nn.Module):
         x = self.sln_norm(hl, x)
         x = self.w_out(x)  # Replace to siren
         result = self.head(x).view(b, -1, stratNum)
+
         return result
 
 
 class Discriminator(nn.Module):
-    def __init__(self,
+    def __init__(self,config,
         in_channels = 1,
         patch_size = 8,
         extend_size = 2,
@@ -333,7 +334,6 @@ class Discriminator(nn.Module):
         self.patch_size = patch_size + 2 * extend_size
         self.token_dim = in_channels * (self.patch_size ** 2)
         self.project_patches = nn.Linear(self.token_dim, dim)
-
         self.emb_dropout = nn.Dropout(dropout)
 
         self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
@@ -350,21 +350,19 @@ class Discriminator(nn.Module):
         # Generate overlappimg image patches
         stride_h = (img.shape[2] - self.patch_size) // 8 + 1
         stride_w = (img.shape[3] - self.patch_size) // 8 + 1
-        img_patches = img.unfold(2, self.patch_size, stride_h).unfold(3, self.patch_size, stride_w)
+        stride_c = (img.shape[4] - self.patch_size) // 8 + 1
+        img_patches = img.unfold(2, self.patch_size, stride_h).unfold(3, self.patch_size, stride_w).unfold(4, self.patch_size, stride_c)
         img_patches = img_patches.contiguous().view(
             img_patches.shape[0], img_patches.shape[2] * img_patches.shape[3], img_patches.shape[1] * img_patches.shape[4] * img_patches.shape[5]
         )
         img_patches = self.project_patches(img_patches)
         batch_size, tokens, _ = img_patches.shape
-
         # Prepend the classifier token
         cls_token = repeat(self.cls_token, '() n d -> b n d', b = batch_size)
         img_patches = torch.cat((cls_token, img_patches), dim = 1)
-
         # Plus the positional embedding
         img_patches = img_patches + self.pos_emb1D[: tokens + 1, :]
         img_patches = self.emb_dropout(img_patches)
-
         result = self.Transformer_Encoder(img_patches)
         logits = self.mlp_head(result[:, 0, :])
         logits = nn.Sigmoid()(logits)
