@@ -85,7 +85,7 @@ if __name__ == '__main__':
                         help = "Coefficients used for computing running averages of gradient and its square")
     parser.add_argument("--latent-dim", type = int, default = 1024,
                         help = "Dimension of the latent vector")
-    parser.add_argument("--data-dir", type = str, default = "crypko_data/faces/",
+    parser.add_argument("--data-dir", type = str, default = "dataset",
                         help = "Data root dir of your training data")
     parser.add_argument("--sample-interval", type = int, default = 1000,
                         help = "Interval for sampling image from generator")
@@ -98,7 +98,7 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Dataloader
-    data_loader = utils.get_dataloader(args.data_dir, batch_size = args.batch_size)
+    data_loader = utils.get_dataloader(args.data_dir,img_size=32, batch_size = args.batch_size)
 
 
     # Create the log folder

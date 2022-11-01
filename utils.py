@@ -4,18 +4,22 @@ import os
 import glob
 from torch.utils.data import DataLoader
 import torchvision
+# from data.geo3D32_dataset import geo3D32Dataset
 import torchvision.transforms as T
 
 def get_dataset(root, img_size = 64):
     fnames = glob.glob(os.path.join(root, '*'))
-    compose = [
-        T.ToPILImage(),
-        T.Resize((img_size, img_size)),
-        T.ToTensor(),
-        T.Normalize(mean = (0.5, 0.5, 0.5), std = (0.5, 0.5, 0.5)),
-    ]
-    transform = T.Compose(compose)
-    dataset = CrypkoDataset(fnames, transform)
+    # compose = [
+    #     T.ToPILImage(),
+    #     T.Resize((img_size, img_size)),
+    #     T.ToTensor(),
+    #     T.Normalize(mean = (0.5, 0.5, 0.5), std = (0.5, 0.5, 0.5)),
+    # ]
+    # transform = T.Compose(compose)
+
+    # dataset = geo3D32Dataset()
+    dataset = CrypkoDataset(fnames)
+    # dataset = CrypkoDataset(fnames, transform)
     return dataset
 
 
@@ -27,6 +31,7 @@ def get_dataloader(root, img_size = 64, batch_size = 64):
             batch_size = batch_size,
             num_workers = 1,
             sampler = InfiniteSampler(data)
+
         )
     )
     return data_loader
