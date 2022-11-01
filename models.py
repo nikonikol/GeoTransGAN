@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from einops import rearrange, repeat
 
 import torch
@@ -216,51 +217,110 @@ class SineLayer(nn.Module):
 
     def forward(self, input):
         return torch.sin(self.omega_0 * self.linear(input))
+class GITConfig:
+    """ base GIT config, params common to all GIT versions """
+    embd_pdrop = 0.1
+    resid_pdrop = 0.1
+    attn_pdrop = 0.1
+
+    # vocab_size代表有字典中有多少子 在这代表有多少种地层编码 block_size 在这代表所有的像素数 patch_size 代表块的大小
+    def __init__(self,img_size,block_size,grid, in_chans ,patch_size, if_bert=True, **kwargs):
+        self.img_size=img_size
+        self.in_chans=in_chans
+        # self.vocab_size = vocab_size
+        self.block_size = block_size
+        self.patch_size = patch_size
+        self.grid = grid
+        self.if_bert = if_bert
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+class PatchEmbed(nn.Module):
+    def __init__(self, img_size, patch_size, in_chans, embed_dim, norm_layer=None, flatten=True):
+        super().__init__()
+        self.img_size = img_size
+        self.patch_size = patch_size
+        self.embed_dim = embed_dim
+        self.grid_size = (self.img_size[0] // self.patch_size[0], self.img_size[1] // self.patch_size[1],self.img_size[2] // self.patch_size[2])
+        self.num_patches = self.grid_size[0] * self.grid_size[1]*self.grid_size[2]
+        self.flatten = flatten
+        self.proj = nn.Conv3d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
+
+    def forward(self, x):
+        x=x.permute(0,4,1,2,3)
+        B, C, H, W, L = x.shape
+        assert H == self.img_size[0] and W == self.img_size[1], \
+            f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
+        x = self.proj(x)
+
+        if self.flatten:
+            x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC
+        x = self.norm(x)
+        return x
 
 
 class Generator(nn.Module):
-    def __init__(self,
+    def __init__(self,config,
         initialize_size = 8,
         dim = 384,
         blocks = 6,
         num_heads = 6,
         dim_head = None,
         dropout = 0,
-        out_channels = 3
-    ):
+        out_channels = 1):
         super(Generator, self).__init__()
-        self.initialize_size = initialize_size
-        self.dim = dim
-        self.blocks = blocks
-        self.num_heads = num_heads
-        self.dim_head = dim_head
-        self.dropout = dropout
-        self.out_channels = out_channels
+        self.config = config
+        df128 = pd.read_csv("data/I_J_K.csv", low_memory=False)
+        self.posEmbedding = ((torch.FloatTensor(df128[['I', 'J', 'K']].values).reshape(128, 128, 128, -1)[::16, ::16,
+                              ::16].reshape(-1, 3)) / 128).cuda()
+        self.tok_emb = nn.Embedding(config.stratNum, 1)
+        self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size, config.embed_dim))
+        #self.pos_emb1D = nn.Parameter(torch.randn(self.initialize_size * 8, dim))
+        self.PixelShuffle = nn.PixelShuffle(2)
+        self.drop = nn.Dropout(config.embd_pdrop)
+        #编码
+        self.patch_embed = PatchEmbed(img_size=config.img_size, patch_size=config.patch_size, in_chans=config.in_chans,
+                                      embed_dim=config.embed_dim)
+        self.poSpatch_embed = PatchEmbed(img_size=config.img_size, patch_size=config.patch_size, in_chans=3,
+                                         embed_dim=config.embed_dim)
 
-        self.pos_emb1D = nn.Parameter(torch.randn(self.initialize_size * 8, dim))
-
-        self.mlp = nn.Linear(1024, (self.initialize_size * 8) * self.dim)
-        self.Transformer_Encoder = GTransformerEncoder(dim, blocks, num_heads, dim_head, dropout)
+        self.mlp = nn.Linear(1024, (self.initialize_size * 8) * self.config.embed_dim)
+        self.Transformer_Encoder = GTransformerEncoder(config.embed_dim, blocks, num_heads, dim_head, dropout)
 
         # Implicit Neural Representation
         self.w_out = nn.Sequential(
-            SineLayer(dim, dim * 2, is_first = True, omega_0 = 30.),
-            SineLayer(dim * 2, self.initialize_size * 8 * self.out_channels, is_first = False, omega_0 = 30)
+            SineLayer(config.embed_dim, config.embed_dim * 2, is_first = True, omega_0 = 30.),
+            SineLayer(config.embed_dim * 2, self.initialize_size * 8 * self.out_channels, is_first = False, omega_0 = 30)
         )
-        self.sln_norm = SLN(self.dim)
+        self.sln_norm = SLN(self.config.embed_dim)
+        output_size = int((config.img_size[0] * config.img_size[1] * config.img_size[2]) / (config.block_size))
+        self.head = nn.Linear(config.embed_dim, output_size * config.stratNum, bias=False)
+        self.pos_head = nn.Linear(3, config.embed_dim)
+        self.nos_head = nn.Linear(1, config.embed_dim)
 
-    def forward(self, noise):
-        x = self.mlp(noise).view(-1, self.initialize_size * 8, self.dim)
-        x, hl = self.Transformer_Encoder(self.pos_emb1D, x)
+
+    def forward(self, idx):
+        b, h, w, l, c = idx.size()
+        idx = idx.long()
+        stratNum = self.config.stratNum
+        token_embeddings = (idx / stratNum).float()
+        nos = self.nos_head(torch.randn(b, 512, 1).cuda())
+        token_embeddings = self.patch_embed(token_embeddings)
+        position_embeddings = self.posEmbedding.repeat(b, 1, 1)
+        position_embeddings = self.pos_head(position_embeddings)
+        x = nos + token_embeddings + position_embeddings
+        # x = self.mlp(noise).view(-1, self.initialize_size * 8, self.dim)
+        x, hl = self.Transformer_Encoder(self.pos_emb, x)
         x = self.sln_norm(hl, x)
         x = self.w_out(x)  # Replace to siren
-        result = x.view(x.shape[0], 3, self.initialize_size * 8, self.initialize_size * 8)
+        result = self.head(x).view(b, -1, stratNum)
         return result
 
 
 class Discriminator(nn.Module):
     def __init__(self,
-        in_channels = 3,
+        in_channels = 1,
         patch_size = 8,
         extend_size = 2,
         dim = 384,
