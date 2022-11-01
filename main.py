@@ -6,12 +6,13 @@ import numpy as np
 
 import utils
 import models
-
+from models import GITConfig,Generator
 import torch
 import torch.nn as nn
 import torchvision
 import torchvision.transforms as T
 from torchvision.utils import make_grid
+
 
 
 def exp_mov_avg(Gs, G, alpha = 0.999, global_step = 999):
@@ -94,6 +95,22 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
             torch.save(generator_s.state_dict(), 'weights/Generator_ema.pth')
             torch.save(discriminator.state_dict(), 'weights/Discriminator.pth')
             print("Save model state.")
+
+# img_size = opt.load_size
+stratNum = 45
+img_size = 32, 32, 32
+patch = 8
+block = 6
+patch_size = (patch, patch, patch)
+embed_dim = patch*patch*patch
+block_size = block*block*block
+grid = (block, block, block)
+
+mconf = GITConfig(img_size,block_size,grid, 1,patch_size,
+                  embd_pdrop=0.0, resid_pdrop=0.0, attn_pdrop=0.0,stratNum=stratNum,
+                  n_layer=16, n_head=8, embed_dim=embed_dim, ar_bert_loss=True)
+model = Generator(mconf)
+
 
 
 if __name__ == '__main__':
