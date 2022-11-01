@@ -19,7 +19,28 @@ def exp_mov_avg(Gs, G, alpha = 0.999, global_step = 999):
     for ema_param, param in zip(Gs.parameters(), G.parameters()):
         ema_param.data.mul_(alpha).add_(1 - alpha, param.data)
 
+def getmaskedmodel(geomodel):
+    maskcls = np.random.randint(6, 10)
+    # maskcls=np.random.randint(10,16)
+    mask = np.zeros(geomodel.shape)
+    mask_near = np.zeros(geomodel.shape)
+    mask_extendnear = np.zeros(geomodel.shape)
 
+    for i in range(maskcls):
+        r1, r2 = np.random.randint(geomodel.shape[1]), np.random.randint(geomodel.shape[1])
+        mask[:, r1, r2] = 1
+        xstrat = 0 if r1 - 1 < 0 else r1 - 1
+        ystrat = 0 if r2 - 1 < 0 else r2 - 1
+        xstop = geomodel.shape[0] - 1 if r1 + 2 > geomodel.shape[0] - 1 else r1 + 2
+        ystop = geomodel.shape[0] - 1 if r2 + 2 > geomodel.shape[0] - 1 else r2 + 2
+        mask_near[:, xstrat:xstop, ystrat:ystop] = 1
+        xstrat = 0 if r1 - 2 < 0 else r1 - 2
+        ystrat = 0 if r2 - 2 < 0 else r2 - 2
+        xstop = geomodel.shape[0] - 1 if r1 + 3 > geomodel.shape[0] - 1 else r1 + 3
+        ystop = geomodel.shape[0] - 1 if r2 + 3 > geomodel.shape[0] - 1 else r2 + 3
+        mask_extendnear[:, xstrat:xstop, ystrat:ystop] = 1
+    mask_tensor =[torch.Tensor(mask),torch.Tensor(mask_near),torch.Tensor(mask_extendnear)]
+    return mask_tensor
 def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, device):
     fixed_noise = torch.FloatTensor(np.random.normal(0, 1, (16, args.latent_dim))).to(device)
     for step in tqdm(range(args.steps + 1)):
@@ -28,6 +49,10 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
 
         # Forward + Backward with real images
         r_img = next(data_loader).to(device)
+        mask = getmaskedmodel(r_img[0])[0]
+        mask=torch.unsqueeze(mask,0)
+        mask=mask.repeat(r_img.shape[0],1,1,1)
+        maskedmodel = mask*r_img
         r_label = torch.ones(args.batch_size).to(device)
         r_logit = discriminator(r_img).flatten()
         lossD_real = criterion(r_logit, r_label)

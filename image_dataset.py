@@ -15,6 +15,8 @@ class CrypkoDataset(Dataset):
         # 1. Load the image
         # img = torchvision.io.read_image(fname)
         img = io.loadmat(fname)['sample'][0]
+        img = torch.tensor(img)
+        img = img.permute(2, 0, 1)
         # 2. Resize and normalize the images using torchvision.
         # img = self.transform(img)
         return img
