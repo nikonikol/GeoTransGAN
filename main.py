@@ -98,7 +98,7 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
 
         # Forward + Backward with real images
         r_img = next(data_loader).to(device)
-        mask = getmaskedmodel(r_img[0])[0]
+        mask = getmaskedmodel(r_img[0])[0].to(device)
         mask=torch.unsqueeze(mask,0)
         mask=mask.repeat(r_img.shape[0],1,1,1)
         maskedmodel = mask*r_img
@@ -109,9 +109,9 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
 
         # Forward + Backward with fake images
 
-        # ÊäÈëÊý¾Ý²»ÊÇ
-        latent_vector = torch.FloatTensor(np.random.normal(0, 1, (args.batch_size, args.latent_dim))).to(device)
-        f_img = generator(latent_vector)
+        # ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý²ï¿½ï¿½ï¿½
+        #latent_vector = torch.FloatTensor(np.random.normal(0, 1, (args.batch_size, args.latent_dim))).to(device)
+        f_img = generator(maskedmodel)
         f_label = torch.zeros(args.batch_size).to(device)
         f_logit = discriminator(f_img).flatten()
         lossD_fake = criterion(f_logit, f_label)+ stratLoss(f_img, getmaskedmodel(r_img[0]),r_img)
@@ -177,7 +177,7 @@ if __name__ == '__main__':
                         help = "Coefficients used for computing running averages of gradient and its square")
     parser.add_argument("--latent-dim", type = int, default = 1024,
                         help = "Dimension of the latent vector")
-    parser.add_argument("--data-dir", type = str, default = "dataset",
+    parser.add_argument("--data-dir", type = str, default = "dataset/3D32",
                         help = "Data root dir of your training data")
     parser.add_argument("--sample-interval", type = int, default = 1000,
                         help = "Interval for sampling image from generator")
@@ -198,9 +198,9 @@ if __name__ == '__main__':
     os.makedirs("samples", exist_ok = True)
 
     # Initialize Generator and Discriminator
-    netG = models.Generator().to(device)
+    netG = models.Generator(mconf).to(device)
     netG_s = copy.deepcopy(netG)
-    netD = models.Discriminator().to(device)
+    netD = models.Discriminator(mconf).to(device)
 
     # Loss function
     criterion = nn.BCELoss()
