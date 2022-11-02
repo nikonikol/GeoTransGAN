@@ -157,8 +157,8 @@ block_size = block*block*block
 grid = (block, block, block)
 
 mconf = GITConfig(img_size,block_size,grid, 1,patch_size,
-                  embd_pdrop=0.0, resid_pdrop=0.0, attn_pdrop=0.0,stratNum=stratNum,
-                  n_layer=16, n_head=8, embed_dim=embed_dim, ar_bert_loss=True)
+                  embd_pdrop=0.0, resid_pdrop=0.0, dropout=0.0,stratNum=stratNum,
+                  blocks=8, num_heads=8, embed_dim=embed_dim, ar_bert_loss=True)
 model = Generator(mconf)
 
 

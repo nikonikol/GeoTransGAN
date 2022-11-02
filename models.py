@@ -261,13 +261,13 @@ class PatchEmbed(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self,config,
+    def __init__(self, config,
         initialize_size = 8,
-        dim = 384,
-        blocks = 6,
-        num_heads = 6,
+        # dim = 384,
+        # blocks = 8,
+        # num_heads = 6,
         dim_head = None,
-        dropout = 0,
+        # dropout = 0,
         out_channels = 1):
         super(Generator, self).__init__()
         self.config = config
@@ -285,13 +285,13 @@ class Generator(nn.Module):
         self.poSpatch_embed = PatchEmbed(img_size=config.img_size, patch_size=config.patch_size, in_chans=3,
                                          embed_dim=config.embed_dim)
 
-        self.mlp = nn.Linear(1024, (self.initialize_size * 8) * self.config.embed_dim)
-        self.Transformer_Encoder = GTransformerEncoder(config.embed_dim, blocks, num_heads, dim_head, dropout)
+        #self.mlp = nn.Linear(1024, (self.initialize_size * 8) * self.config.embed_dim)
+        self.Transformer_Encoder = GTransformerEncoder(config.embed_dim, config.blocks, config.num_heads, dim_head, config.dropout)
 
         # Implicit Neural Representation
         self.w_out = nn.Sequential(
             SineLayer(config.embed_dim, config.embed_dim * 2, is_first = True, omega_0 = 30.),
-            SineLayer(config.embed_dim * 2, self.initialize_size * 8 * self.out_channels, is_first = False, omega_0 = 30)
+            SineLayer(config.embed_dim * 2, initialize_size * 8 * out_channels, is_first = False, omega_0 = 30)
         )
         self.sln_norm = SLN(self.config.embed_dim)
         output_size = int((config.img_size[0] * config.img_size[1] * config.img_size[2]) / (config.block_size))
@@ -321,18 +321,19 @@ class Generator(nn.Module):
 
 class Discriminator(nn.Module):
     def __init__(self,config,
-        in_channels = 1,
-        patch_size = 8,
-        extend_size = 2,
-        dim = 384,
-        blocks = 6,
-        num_heads = 6,
+        # in_channels = 1,
+        # patch_size = 8,
+        # extend_size = 2,
+        # dim = 384,
+        # blocks = 6,
+        # num_heads = 6,
         dim_head = None,
-        dropout = 0
+        # dropout = 0
     ):
         super(Discriminator, self).__init__()
         self.patch_embed = PatchEmbed(img_size=config.img_size, patch_size=config.patch_size, in_chans=config.in_chans,
                                      embed_dim=config.embed_dim)
+        dim=config.embed_dim
         #self.token_dim = in_channels * (self.patch_size ** 2)
         #self.project_patches = nn.Linear(self.token_dim, dim)
         #self.emb_dropout = nn.Dropout(dropout)
@@ -340,14 +341,18 @@ class Discriminator(nn.Module):
         #self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         #self.pos_emb1D = nn.Parameter(torch.randn(self.token_dim + 1, dim))
         self.mlp_head = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, 1)
+            nn.LayerNorm(config.embed_dim),
+            nn.Linear(config.embed_dim, 1)
         )
-
-        self.Transformer_Encoder = DTransformerEncoder(dim, blocks, num_heads, dim_head, dropout)
+        self.Transformer_Encoder = DTransformerEncoder(config.embed_dim, config.blocks, config.num_heads, dim_head,
+                                                       config.dropout)
+        #self.Transformer_Encoder = DTransformerEncoder(dim, config.blocks, config.num_heads, config.dim_head, config.dropout)
 
 
     def forward(self, img):
+        img = torch.unsqueeze(img,-1)
+        img = img.float()
+        # b, h, w, l, c = idx.size()
         img_patches = self.patch_embed(img)
         # Generate overlappimg image patches
         #stride_h = (img.shape[2] - self.patch_size) // 8 + 1
