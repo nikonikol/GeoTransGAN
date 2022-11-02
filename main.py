@@ -121,7 +121,7 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
 
         # Train Generator
         optim_g.zero_grad()
-        f_img = generator(torch.FloatTensor(np.random.normal(0, 1, (args.batch_size, args.latent_dim))).to(device))
+        f_img = generator(maskedmodel)
         r_label = torch.ones(args.batch_size).to(device)
         f_logit = discriminator(f_img).flatten()
         lossG = criterion(f_logit, r_label)
