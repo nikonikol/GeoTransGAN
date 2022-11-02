@@ -331,13 +331,14 @@ class Discriminator(nn.Module):
         dropout = 0
     ):
         super(Discriminator, self).__init__()
-        self.patch_size = patch_size + 2 * extend_size
-        self.token_dim = in_channels * (self.patch_size ** 2)
-        self.project_patches = nn.Linear(self.token_dim, dim)
-        self.emb_dropout = nn.Dropout(dropout)
+        self.patch_embed = PatchEmbed(img_size=config.img_size, patch_size=config.patch_size, in_chans=config.in_chans,
+                                     embed_dim=config.embed_dim)
+        #self.token_dim = in_channels * (self.patch_size ** 2)
+        #self.project_patches = nn.Linear(self.token_dim, dim)
+        #self.emb_dropout = nn.Dropout(dropout)
 
-        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
-        self.pos_emb1D = nn.Parameter(torch.randn(self.token_dim + 1, dim))
+        #self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        #self.pos_emb1D = nn.Parameter(torch.randn(self.token_dim + 1, dim))
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, 1)
@@ -347,22 +348,23 @@ class Discriminator(nn.Module):
 
 
     def forward(self, img):
+        img_patches = self.patch_embed(img)
         # Generate overlappimg image patches
-        stride_h = (img.shape[2] - self.patch_size) // 8 + 1
-        stride_w = (img.shape[3] - self.patch_size) // 8 + 1
-        stride_c = (img.shape[4] - self.patch_size) // 8 + 1
-        img_patches = img.unfold(2, self.patch_size, stride_h).unfold(3, self.patch_size, stride_w).unfold(4, self.patch_size, stride_c)
-        img_patches = img_patches.contiguous().view(
-            img_patches.shape[0], img_patches.shape[2] * img_patches.shape[3], img_patches.shape[1] * img_patches.shape[4] * img_patches.shape[5]
-        )
-        img_patches = self.project_patches(img_patches)
-        batch_size, tokens, _ = img_patches.shape
+        #stride_h = (img.shape[2] - self.patch_size) // 8 + 1
+        #stride_w = (img.shape[3] - self.patch_size) // 8 + 1
+        #stride_c = (img.shape[4] - self.patch_size) // 8 + 1
+        #img_patches = img.unfold(2, self.patch_size, stride_h).unfold(3, self.patch_size, stride_w).unfold(4, self.patch_size, stride_c)
+        #img_patches = img_patches.contiguous().view(
+            #img_patches.shape[0], img_patches.shape[2] * img_patches.shape[3], img_patches.shape[1] * img_patches.shape[4] * img_patches.shape[5]
+        #)
+        #img_patches = self.project_patches(img_patches)
+        #batch_size, tokens, _ = img_patches.shape
         # Prepend the classifier token
-        cls_token = repeat(self.cls_token, '() n d -> b n d', b = batch_size)
-        img_patches = torch.cat((cls_token, img_patches), dim = 1)
+        #cls_token = repeat(self.cls_token, '() n d -> b n d', b = batch_size)
+        #img_patches = torch.cat((cls_token, img_patches), dim = 1)
         # Plus the positional embedding
-        img_patches = img_patches + self.pos_emb1D[: tokens + 1, :]
-        img_patches = self.emb_dropout(img_patches)
+        #img_patches = img_patches + self.pos_emb1D[: tokens + 1, :]
+        #img_patches = self.emb_dropout(img_patches)
         result = self.Transformer_Encoder(img_patches)
         logits = self.mlp_head(result[:, 0, :])
         logits = nn.Sigmoid()(logits)
