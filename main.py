@@ -12,7 +12,7 @@ import torch.nn as nn
 import torchvision
 import torchvision.transforms as T
 from torchvision.utils import make_grid
-
+from torch.nn import functional as F
 
 
 def exp_mov_avg(Gs, G, alpha = 0.999, global_step = 999):
@@ -42,6 +42,54 @@ def getmaskedmodel(geomodel):
         mask_extendnear[:, xstrat:xstop, ystrat:ystop] = 1
     mask_tensor =[torch.Tensor(mask),torch.Tensor(mask_near),torch.Tensor(mask_extendnear)]
     return mask_tensor
+
+def stratLoss(pre_,mask_,tar_):
+        # t1=time.time()
+        w1,w2,w3,w4=0,0.5,0.3,0.1
+        b,block_size,cls=pre_.shape
+        mask=mask_[0].reshape(-1)
+        masknear=mask_[1].reshape(-1)
+        masknearextend=mask_[2].reshape(-1)
+        pre=pre_.reshape(-1,cls)
+        tar=tar_.reshape(-1)
+        holepre=pre[[mask!=0]]
+        holereal=tar[[mask!=0]]
+
+        nearpre=pre[[masknear!=0]]
+        nearreal=tar[[masknear!=0]]
+
+        nearextendpre=pre[[masknearextend!=0]]
+        extendreal=tar[[masknearextend!=0]]
+
+        loss1 = F.cross_entropy(pre_.view(-1, pre_.size(-1)), tar_.view(-1).long())
+        losshole = F.cross_entropy(holepre.view(-1, pre_.size(-1)), holereal.view(-1).long())
+        lossnear = F.cross_entropy(nearpre.view(-1, pre_.size(-1)), nearreal.view(-1).long())
+        lossnearextend = F.cross_entropy(nearextendpre.view(-1, pre_.size(-1)), extendreal.view(-1).long())
+        loss = w1*loss1+w2*losshole+w3*lossnear+w4*lossnearextend
+        # loss = w1*loss1+w2*losshole
+        # # t2 = time.time()
+        # tar = tar_
+        # b,h,w=tar.shape
+        # pre = torch.argmax((pre_.view(-1, pre_.size(-1))), axis=1).view(tar.shape)
+        # tar_strat=self.getstrat(tar)
+        # pre_strat=self.getstrat(pre)
+        # pre_onehot=torch.nn.functional.one_hot(pre_strat,self.config.stratNum).float()
+        # # t3=time.time()
+        # # l1time=t2-t1
+        # # l2time=t3-t1
+        # # crossentropyloss = torch.nn.MSELoss()
+        # crossentropyloss = torch.nn.CrossEntropyLoss()
+        # loss2 = crossentropyloss(pre_onehot.view(-1,self.config.stratNum), tar_strat.view(-1))
+        # # loss2 = crossentropyloss(pre,tar_)
+        # loss=loss1+loss2
+        # # loss=loss2
+        # loss.requires_grad_(True)
+        # loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1).long())
+        # a=torch.unique(tar[0], sorted=False,dim=0)
+        # b=np.array(a.cpu())
+        # b
+        return loss
+
 def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, device):
     fixed_noise = torch.FloatTensor(np.random.normal(0, 1, (16, args.latent_dim))).to(device)
     for step in tqdm(range(args.steps + 1)):
@@ -66,7 +114,7 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
         f_img = generator(latent_vector)
         f_label = torch.zeros(args.batch_size).to(device)
         f_logit = discriminator(f_img).flatten()
-        lossD_fake = criterion(f_logit, f_label)
+        lossD_fake = criterion(f_logit, f_label)+ stratLoss(f_img, getmaskedmodel(r_img[0]),r_img)
         lossD_fake.backward()
 
         optim_d.step()
