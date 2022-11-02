@@ -60,6 +60,8 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
         lossD_real.backward()
 
         # Forward + Backward with fake images
+
+        # 输入数据不是
         latent_vector = torch.FloatTensor(np.random.normal(0, 1, (args.batch_size, args.latent_dim))).to(device)
         f_img = generator(latent_vector)
         f_label = torch.zeros(args.batch_size).to(device)
