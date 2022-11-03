@@ -45,11 +45,18 @@ def getmaskedmodel(geomodel):
 
 def stratLoss(pre_,mask_,tar_):
         # t1=time.time()
-        w1,w2,w3,w4=0,0.5,0.3,0.1
+
+        w1,w2,w3,w4=0,0.6,0.3,0.1
         b,block_size,cls=pre_.shape
-        mask=mask_[0].reshape(-1)
-        masknear=mask_[1].reshape(-1)
-        masknearextend=mask_[2].reshape(-1)
+        mask = mask_[0]
+        mask = torch.unsqueeze(mask,0)
+        mask=mask.repeat(b,1,1,1)
+        mask = mask.reshape(-1)
+
+        masknear = torch.unsqueeze(mask_[1],0)
+        masknear = masknear.repeat(b,1,1,1).reshape(-1)
+
+        masknearextend=torch.unsqueeze(mask_[2],0).repeat(b,1,1,1).reshape(-1)
         pre=pre_.reshape(-1,cls)
         tar=tar_.reshape(-1)
         holepre=pre[[mask!=0]]
@@ -61,12 +68,12 @@ def stratLoss(pre_,mask_,tar_):
         nearextendpre=pre[[masknearextend!=0]]
         extendreal=tar[[masknearextend!=0]]
 
-        loss1 = F.cross_entropy(pre_.view(-1, pre_.size(-1)), tar_.view(-1).long())
+        # loss1 = F.cross_entropy(pre_.view(-1, pre_.size(-1)), tar_.view(-1).long())
         losshole = F.cross_entropy(holepre.view(-1, pre_.size(-1)), holereal.view(-1).long())
         lossnear = F.cross_entropy(nearpre.view(-1, pre_.size(-1)), nearreal.view(-1).long())
         lossnearextend = F.cross_entropy(nearextendpre.view(-1, pre_.size(-1)), extendreal.view(-1).long())
-        loss = w1*loss1+w2*losshole+w3*lossnear+w4*lossnearextend
-        # loss = w1*loss1+w2*losshole
+        # loss = w1*loss1+w2*losshole+w3*lossnear+w4*lossnearextend
+        loss = w2*losshole+w3*lossnear+w4*lossnearextend
         # # t2 = time.time()
         # tar = tar_
         # b,h,w=tar.shape
@@ -91,7 +98,7 @@ def stratLoss(pre_,mask_,tar_):
         return loss
 
 def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, device):
-    fixed_noise = torch.FloatTensor(np.random.normal(0, 1, (16, args.latent_dim))).to(device)
+    # fixed_noise = torch.FloatTensor(np.random.normal(0, 1, (16, args.latent_dim))).to(device)
     for step in tqdm(range(args.steps + 1)):
         # Train Discriminator
         optim_d.zero_grad()
@@ -111,20 +118,20 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
 
         # �������ݲ���
         #latent_vector = torch.FloatTensor(np.random.normal(0, 1, (args.batch_size, args.latent_dim))).to(device)
-        f_img = generator(maskedmodel)
+        f_img,_ = generator(maskedmodel)
         f_label = torch.zeros(args.batch_size).to(device)
         f_logit = discriminator(f_img).flatten()
-        lossD_fake = criterion(f_logit, f_label)+ stratLoss(f_img, getmaskedmodel(r_img[0]),r_img)
+        lossD_fake = criterion(f_logit, f_label)
         lossD_fake.backward()
 
         optim_d.step()
 
         # Train Generator
         optim_g.zero_grad()
-        f_img = generator(maskedmodel)
+        f_img,_logit = generator(maskedmodel)
         r_label = torch.ones(args.batch_size).to(device)
         f_logit = discriminator(f_img).flatten()
-        lossG = criterion(f_logit, r_label)
+        lossG = criterion(f_logit, r_label)+ stratLoss(_logit, getmaskedmodel(r_img[0]),r_img)
         lossG.backward()
         optim_g.step()
 
@@ -132,8 +139,12 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
 
         if step % args.sample_interval == 0:
             generator.eval()
-            vis = generator(fixed_noise).detach().cpu()
-            vis = make_grid(vis, nrow = 4, padding = 5, normalize = True)
+            vis = generator(maskedmodel)[0][:,15,:,:].detach().cpu().float()
+            vis = torch.unsqueeze(vis,1)
+            vis = make_grid(vis, nrow = 4, padding = 5, normalize = False)
+            # vis = make_grid(vis, nrow = 4, padding = 5, normalize = True)
+
+            # vis = vis.astype(np.uint8)
             vis = T.ToPILImage()(vis)
             vis.save('samples/vis{:05d}.jpg'.format(step))
             generator.train()
@@ -149,8 +160,10 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
 # img_size = opt.load_size
 stratNum = 45
 img_size = 32, 32, 32
-patch = 8
-block = 6
+# 块的边长长度
+patch = 4
+# 块的数量
+block = 8
 patch_size = (patch, patch, patch)
 embed_dim = patch*patch*patch
 block_size = block*block*block
@@ -167,7 +180,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--steps", type = int, default = 100000,
                         help = "Number of steps for training (Default: 100000)")
-    parser.add_argument("--batch-size", type = int, default = 128,
+    parser.add_argument("--batch-size", type = int, default = 4,
                         help = "Size of each batches (Default: 128)")
     parser.add_argument("--lr", type = float, default = 0.002,
                         help = "Learning rate (Default: 0.002)")

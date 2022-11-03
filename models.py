@@ -316,9 +316,12 @@ class Generator(nn.Module):
         x, hl = self.Transformer_Encoder(self.pos_emb, x)
         x = self.sln_norm(hl, x)
         x = self.w_out(x)  # Replace to siren
-        result = self.head(x).view(b, -1, stratNum)
+        logits = self.head(x).view(b, -1, stratNum)
+        # result = torch.argmax((logits.view(b, logits.shape[1])), axis=1)
+        result = torch.argmax((logits), axis=-1)
+        result = result.view(b,h,w,l)
 
-        return result
+        return result,logits
 
 
 class Discriminator(nn.Module):
