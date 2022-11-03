@@ -260,6 +260,7 @@ class PatchEmbed(nn.Module):
         return x
 
 
+
 class Generator(nn.Module):
     def __init__(self, config,
         initialize_size = 8,
@@ -301,6 +302,7 @@ class Generator(nn.Module):
 
 
     def forward(self, idx):
+        idx = torch.unsqueeze(idx,-1)
         b, h, w, l, c = idx.size()
         idx = idx.long()
         stratNum = self.config.stratNum
