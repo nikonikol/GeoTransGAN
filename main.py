@@ -3,7 +3,8 @@ import argparse
 import copy
 from tqdm import tqdm
 import numpy as np
-
+import pandas as pd
+import time
 import utils
 import models
 from models import GITConfig,Generator
@@ -97,6 +98,31 @@ def stratLoss(pre_,mask_,tar_):
         # b
         return loss
 
+def get_trainning_result(trainning_3Dimage,gan_label,div_path,counter):#将训练得到的矩阵进行输出到指定文件夹
+
+    #进行归一化矩阵还原
+    print("输出的生成矩阵的大小 = ",trainning_3Dimage.shape,gan_label.shape,type(gan_label))
+    trainning_3Dimage = (trainning_3Dimage - 1.) * 5.
+    trainning_3Dimage = np.rint(trainning_3Dimage)
+    gan_label = (gan_label - 1.) * 5.
+    gan_label = np.rint(gan_label)
+    a = gan_label.reshape(-1)
+    b = trainning_3Dimage.reshape(-1)
+    acc = (b == a).sum() / float(a.shape[0])#精度
+    now = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+    f = open('./train_out/acc.txt', 'a')
+    f.write(str(counter) + '\t' + str(acc)+ '\t' + str(now) + '\t' + '\n')#精度写入
+    f.close()
+
+    df = pd.read_csv("/mnt/data/hay/project3d/data/I_J_K.csv", low_memory=False)
+    I = df["I"].values.reshape(128, 128, 128)[::4, ::4, ::4].reshape(-1)//4+1
+    J = df["J"].values.reshape(128, 128, 128)[::4, ::4, ::4].reshape(-1)//4+1
+    K = df["K"].values.reshape(128, 128, 128)[::4, ::4, ::4].reshape(-1)//4+1
+    dataframe = pd.DataFrame({'I': I, 'J': J, 'K': K, 'StratCode': trainning_3Dimage.reshape(-1)})
+    dataframelable = pd.DataFrame({'I': I, 'J': J, 'K': K, 'StratCode': gan_label.reshape(-1)})
+    dataframe.to_csv(div_path + "/out_trainning_3Dimage" + str(counter) + ".csv", index=False)
+    dataframelable.to_csv(div_path + "/out_trainning_3Dimagelable" + str(counter) + ".csv", index=False)
+
 def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, device):
     # fixed_noise = torch.FloatTensor(np.random.normal(0, 1, (16, args.latent_dim))).to(device)
     for step in tqdm(range(args.steps + 1)):
@@ -139,6 +165,11 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
 
         if step % args.sample_interval == 0:
             generator.eval()
+
+            get_trainning_result()
+
+
+
             vis = generator(maskedmodel)[0][:,15,:,:].detach().cpu().float()
             vis = torch.unsqueeze(vis,1)
             vis = make_grid(vis, nrow = 4, padding = 5, normalize = False)
