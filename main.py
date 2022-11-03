@@ -98,32 +98,54 @@ def stratLoss(pre_,mask_,tar_):
         # b
         return loss
 
-def get_trainning_result(trainning_3Dimage,gan_label,div_path,counter):#将训练得到的矩阵进行输出到指定文件夹
+
+
+def get_trainning_result(gan_label,div_path,counter):#将训练得到的矩阵进行输出到指定文件夹
 
     #进行归一化矩阵还原
-    print("输出的生成矩阵的大小 = ",trainning_3Dimage.shape,gan_label.shape,type(gan_label))
-    trainning_3Dimage = (trainning_3Dimage - 1.) * 5.
-    trainning_3Dimage = np.rint(trainning_3Dimage)
-    gan_label = (gan_label - 1.) * 5.
-    gan_label = np.rint(gan_label)
+    #print("输出的生成矩阵的大小 = ",trainning_3Dimage.shape,gan_label.shape,type(gan_label))
+    #trainning_3Dimage = (trainning_3Dimage - 1.) * 5.
+    #trainning_3Dimage = np.rint(trainning_3Dimage)
+    #gan_label = (gan_label - 1.) * 5.
+    #gan_label = np.rint(gan_label)
+    gan_label = gan_label[0]
+    #gan_label = torch.squeeze(gan_label,dim = 0)
     a = gan_label.reshape(-1)
-    b = trainning_3Dimage.reshape(-1)
-    acc = (b == a).sum() / float(a.shape[0])#精度
-    now = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-    f = open('./train_out/acc.txt', 'a')
-    f.write(str(counter) + '\t' + str(acc)+ '\t' + str(now) + '\t' + '\n')#精度写入
-    f.close()
+    #b = trainning_3Dimage.reshape(-1)
+    #acc = (b == a).sum() / float(a.shape[0])#精度
+    #now = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+    #f = open('./train_out/acc.txt', 'a')
+    #f.write(str(counter) + '\t' + str(acc)+ '\t' + str(now) + '\t' + '\n')#精度写入
+    #f.close()
 
     df = pd.read_csv("/mnt/data/hay/project3d/data/I_J_K.csv", low_memory=False)
     I = df["I"].values.reshape(128, 128, 128)[::4, ::4, ::4].reshape(-1)//4+1
     J = df["J"].values.reshape(128, 128, 128)[::4, ::4, ::4].reshape(-1)//4+1
     K = df["K"].values.reshape(128, 128, 128)[::4, ::4, ::4].reshape(-1)//4+1
-    dataframe = pd.DataFrame({'I': I, 'J': J, 'K': K, 'StratCode': trainning_3Dimage.reshape(-1)})
+    #dataframe = pd.DataFrame({'I': I, 'J': J, 'K': K, 'StratCode': trainning_3Dimage.reshape(-1)})
     dataframelable = pd.DataFrame({'I': I, 'J': J, 'K': K, 'StratCode': gan_label.reshape(-1)})
-    dataframe.to_csv(div_path + "/out_trainning_3Dimage" + str(counter) + ".csv", index=False)
+    #dataframe.to_csv(div_path + "/out_trainning_3Dimage" + str(counter) + ".csv", index=False)
     dataframelable.to_csv(div_path + "/out_trainning_3Dimagelable" + str(counter) + ".csv", index=False)
 
+def load_checkpoint(self):
+    raw_model = self.model.module if hasattr(self.model, "module") else self.model
+    if os.path.exists(self.config.ckpt_path):
+        weights = torch.load(self.config.ckpt_path, map_location='cpu')
+        raw_model.load_state_dict(weights)
+        print("loading ", self.config.ckpt_path)
+    return raw_model
+
+def save_checkpoint(self):
+    # DataParallel wrappers keep raw model object in .module attribute
+    raw_model = model.module if hasattr(self.model, "module") else self.model
+    print("saving ", self.config.ckpt_path)
+    torch.save(raw_model.state_dict(), self.config.ckpt_path)
+
+
+
 def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, device):
+
+
     # fixed_noise = torch.FloatTensor(np.random.normal(0, 1, (16, args.latent_dim))).to(device)
     for step in tqdm(range(args.steps + 1)):
         # Train Discriminator
@@ -160,13 +182,13 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
         lossG = criterion(f_logit, r_label)+ stratLoss(_logit, getmaskedmodel(r_img[0]),r_img)
         lossG.backward()
         optim_g.step()
-
+        #print("计算出来的loss值 = ", lossG, lossD_fake,lossD_real)
         exp_mov_avg(generator_s, generator, global_step = step)
 
         if step % args.sample_interval == 0:
             generator.eval()
-
-            get_trainning_result()
+            gan_label = generator(maskedmodel)[0].detach().cpu()
+            get_trainning_result(gan_label,'output',step)
 
 
 
@@ -189,7 +211,7 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
             print("Save model state.")
 
 # img_size = opt.load_size
-stratNum = 45
+stratNum = 11
 img_size = 32, 32, 32
 # 块的边长长度
 patch = 4
