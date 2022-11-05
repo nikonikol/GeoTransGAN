@@ -127,27 +127,11 @@ def get_trainning_result(gan_label,div_path,counter):#将训练得到的矩阵�
     #dataframe.to_csv(div_path + "/out_trainning_3Dimage" + str(counter) + ".csv", index=False)
     dataframelable.to_csv(div_path + "/out_trainning_3Dimagelable" + str(counter) + ".csv", index=False)
 
-def load_checkpoint(self):
-    raw_model = self.model.module if hasattr(self.model, "module") else self.model
-    if os.path.exists(self.config.ckpt_path):
-        weights = torch.load(self.config.ckpt_path, map_location='cpu')
-        raw_model.load_state_dict(weights)
-        print("loading ", self.config.ckpt_path)
-    return raw_model
-
-def save_checkpoint(self):
-    # DataParallel wrappers keep raw model object in .module attribute
-    raw_model = model.module if hasattr(self.model, "module") else self.model
-    print("saving ", self.config.ckpt_path)
-    torch.save(raw_model.state_dict(), self.config.ckpt_path)
-
-
 
 def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, device):
 
-
     # fixed_noise = torch.FloatTensor(np.random.normal(0, 1, (16, args.latent_dim))).to(device)
-    for step in tqdm(range(args.steps + 1)):
+    for step in tqdm(range(start_step, args.steps + 1)):
         # Train Discriminator
         optim_d.zero_grad()
 
@@ -190,8 +174,6 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
             gan_label = generator(maskedmodel)[0].detach().cpu()
             get_trainning_result(gan_label,'output',step)
 
-
-
             vis = generator(maskedmodel)[0][:,15,:,:].detach().cpu().float()
             vis = torch.unsqueeze(vis,1)
             vis = make_grid(vis, nrow = 4, padding = 5, normalize = False)
@@ -203,11 +185,21 @@ def train(generator, generator_s, discriminator, optim_g, optim_d, data_loader, 
             generator.train()
             print("Save sample to samples/vis{:05d}.jpg".format(step))
 
-        if (step + 1) % args.sample_interval == 0 or step == 0:
+        if step % args.sample_interval == 0 or step == 0:
             # Save the checkpoints.
-            torch.save(generator.state_dict(), 'weights/Generator.pth')
-            torch.save(generator_s.state_dict(), 'weights/Generator_ema.pth')
-            torch.save(discriminator.state_dict(), 'weights/Discriminator.pth')
+            print('step:', step)
+            checkpoint = {
+                'generator': generator.state_dict(),
+                'generator_s': generator_s.state_dict(),
+                'discriminator': discriminator.state_dict(),
+                'optimizer_g': optimizer_g.state_dict(),
+                'optimizer_d': optimizer_d.state_dict(),
+                'step': step,
+                'lossG': lossG,
+                'lossDF': lossD_fake,
+                'lossDR': lossD_real
+            }
+            torch.save(checkpoint, 'weights/ckpt_best1.pth' )
             print("Save model state.")
 
 # img_size = opt.load_size
@@ -227,6 +219,7 @@ mconf = GITConfig(img_size,block_size,grid, 1,patch_size,
                   blocks=8, num_heads=8, embed_dim=embed_dim, ar_bert_loss=True)
 model = Generator(mconf)
 
+start_step = 0
 
 
 if __name__ == '__main__':
@@ -272,12 +265,24 @@ if __name__ == '__main__':
     criterion = nn.BCELoss()
 
     # Optimizer and lr_scheduler
-    optimizer_g = torch.optim.Adam(netG.parameters(), lr = args.lr,
+    optimizer_g = torch.optim.Adam(netG.parameters(), lr = 0.002,
         betas = (args.beta1, args.beta2)
     )
-    optimizer_d = torch.optim.Adam(netD.parameters(), lr = args.lr,
+    optimizer_d = torch.optim.Adam(netD.parameters(), lr = 0.00002,
         betas = (args.beta1, args.beta2)
     )
+
+#加载checkpoint，从断点处继续训练
+    if os.path.exists("weights/ckpt_best1.pth"):
+        path_checkpoint = "weights/ckpt_best.pth"  # 断点路径
+        checkpoint = torch.load(path_checkpoint)  # 加载断点
+
+        netG.load_state_dict(checkpoint['generator'])  # 加载模型可学习参数
+        netG_s.load_state_dict(checkpoint['generator_s'])
+        netD.load_state_dict(checkpoint['discriminator'])
+        optimizer_g.load_state_dict(checkpoint['optimizer_g'])  # 加载优化器参数
+        start_step = checkpoint['step']  # 设置开始的epoch
+        optimizer_d.load_state_dict(checkpoint['optimizer_d'])
 
     # Start Training
     train(netG, netG_s, netD, optimizer_g, optimizer_d, data_loader, device)
